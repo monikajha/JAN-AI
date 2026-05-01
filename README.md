@@ -20,11 +20,39 @@ Demo workflow console for JAN API with:
 
 ## Prerequisites
 
-You need the following services already running locally:
+You need the following services running locally:
 
 1. Keycloak at `http://localhost:8085`
 2. JAN API at `http://localhost:8000`
 3. Python 3 available as `python3`
+
+See [Dependencies](#dependencies) below for setup instructions.
+
+## Setup: Keycloak (Local Development)
+
+Use Docker Compose to start Keycloak locally:
+
+```bash
+cd infra/keycloak
+docker-compose up -d
+```
+
+This starts:
+- **Keycloak** at `http://localhost:8085`
+- **PostgreSQL** for Keycloak (internal, port 5433)
+
+Admin console:
+- URL: `http://localhost:8085`
+- Username: `admin`
+- Password: `admin`
+
+You will need to configure the `jan` realm and `jan-client` OAuth client in Keycloak manually or import a realm export file.
+
+To tear down:
+```bash
+cd infra/keycloak
+docker-compose down
+```
 
 ## Quick Start
 
@@ -54,11 +82,22 @@ Default login fields in UI:
 	- Filters models by `policies.json`
 - `POST /chat`
 	- Enforces model allowlist + daily limits
-	- Forwards normalized payload to `POST /v1/chat/completions` on JAN
-- `GET /usage?user=&days=30`
-	- Reads from JAN DB tables:
-		- `llm_api.token_usage_daily`
-		- `llm_api.token_usage`
+	- Forwards normalized payload to `Pin Keycloak, run the automated cleanup script:
+
+```bash
+chmod +x scripts/cleanup-keycloak-guests.sh
+./scripts/cleanup-keycloak-guests.sh
+```
+
+This script safely removes all users matching `guest-...@temp.jan.ai` from the `jan` realm.
+
+Override Keycloak connection if needed:
+```bash
+KC_BASE=http://localhost:8085 KC_ADMIN_USER=admin KC_ADMIN_PASS=admin \
+  ./scripts/cleanup-keycloak-guests.sh
+```
+
+The cleanup script is idempotent (safe to run multiple times)
 	- Restricted by default to demo users (see below)
 - `GET /policies` and `PUT /policies/{role}`
 	- Admin-only (requires `jan_admin`)
@@ -118,6 +157,29 @@ curl -s "http://localhost:9000/usage?user=&days=30"
 4. Include validation notes in PR:
 	 - login works
 	 - model filtering works
+
+## Dependencies
+
+### External Services Required
+
+1. **JAN API Server** (`http://localhost:8000`)
+   - Repository: [OwnersTable/ot-platform-infra](https://github.com/OwnersTable/ot-platform-infra)
+   - Setup: Follow the JAN API README in that repo
+   - This demo proxies requests to JAN's `/v1/models` and `/v1/chat/completions` endpoints
+
+2. **Keycloak** (`http://localhost:8085`)
+   - Start locally using Docker Compose (see [Setup: Keycloak](#setup-keycloak-local-development) above)
+   - Realm: `jan`
+   - Client: `jan-client`
+   - Database: PostgreSQL (managed by Docker Compose)
+
+### JAN API Database Tables
+
+This demo reads usage data from:
+- `llm_api.token_usage_daily` — Daily token aggregates
+- `llm_api.token_usage` — Individual request logs
+
+These tables are managed by the JAN API backend.
 	 - chat works
 	 - usage counts are expected
 
